@@ -1,75 +1,71 @@
 import warnings
+from bdal.paser.pe_g8s_py_myriad_glycan_id.DataClasses import CompositionProperties
 
 
-class glycanCompositionGenerator(object):
-    """
-    __init__ Parameters
-    ----------
-    building_blocks : dict
-        A dictionary with sugar building blocks as keys and masses as values
-    building_block_codes : dict
-        A mapping from building block names to building block codes e.g. {'Hex': 'H', 'HexNAc': 'N'}
-        Must have the same keys as building_blocks
-        These codes are used for the oxonium ions
-    ions_thresholds : pd.DataFrame
-        oxonium ions and their intensity thresholds
-        Must have three meta_data_columns named 'name', 'mass', and 'BP_intensity_threshold'
-        The name column should be composed of the building block codes. For example 'NNHHH' for the N-glycan core
-        'BP_intensity_threshold' is the base peak intensity threshold
-    min_composition : dict
-        The minimum number of each building block to be in an output composition
-        Must have the same keys as building_blocks
-        The default is all 0
-    max_composition : dict
-        The maximum number of each building block to be in an output composition
-        Must have the same keys as building_blocks
-        The default is all float('inf')
-    glycan_mass_error : float
-        The mass tolerance for matching to the glycan mass. Half the width of the window to look around the masses.
-        The default is 0.1 Da
-    glycan_mass_error_unit : str
-        The units for glycan_mass_error. Either 'Da' or 'ppm'
-        The default is 'Da'.
-    oxonium_mass_error
-        The mass tolerance for matching to the oxonium ions. Half the width of the window to look around the masses.
-        The default is 0.02 Da
-    oxonium_mass_error_unit
-        The units for oxonium_mass_error. Either 'Da' or 'ppm'
-        The default is 'Da'.
-    """
-    def __init__(self, building_blocks: dict,
+class GlycanCompositionGenerator(object):
+
+    def __init__(self, building_block_masses: dict,
                  building_block_codes: dict,
                  min_composition: dict = None,
                  max_composition: dict = None,
-                 glycan_mass_error: float = 0.1,
-                 glycan_mass_error_unit: str = 'Da',
-                 oxonium_mass_error: float = 0.02,
-                 oxonium_mass_error_unit: str = 'Da'
+                 glycan_mass_error: float = 20,
+                 glycan_mass_error_unit: str = 'ppm',
+                 oxonium_mass_error: float = 20,
+                 oxonium_mass_error_unit: str = 'ppm'
                  ):
         """
+        This class generates compositions based on glycan mass and defined sugar building blocks
+
         Parameters
         ----------
-        Refer to Class documentation
+        building_block_masses : dict
+            A dictionary with sugar building blocks as keys and masses as values
+        building_block_codes : dict
+            A mapping from building block names to building block codes e.g. {'Hex': 'H', 'HexNAc': 'N'}
+            Must have the same keys as building_blocks
+            These codes are used for the oxonium ions
+        min_composition : dict
+            The minimum number of each building block to be in an output composition
+            Must have the same keys as building_blocks
+            The default is all 0
+        max_composition : dict
+            The maximum number of each building block to be in an output composition
+            Must have the same keys as building_blocks
+            The default is all float('inf')
+        glycan_mass_error : float
+            The mass tolerance for matching to the glycan mass. Half the width of the window to look around the masses.
+            The default is 0.1 Da
+        glycan_mass_error_unit : str
+            The units for glycan_mass_error. Either 'Da' or 'ppm'
+            The default is 'Da'.
+        oxonium_mass_error
+            The mass tolerance for matching to the oxonium ions. Half the width of the window to look around the masses.
+            The default is 0.02 Da
+        oxonium_mass_error_unit
+            The units for oxonium_mass_error. Either 'Da' or 'ppm'
+            The default is 'Da'.
         """
         # make sure that there is Hex and HexNAc
-        assert all(('Hex', 'HexNAc' in building_blocks)), 'the building blocks must contain "Hex" and "HexNAc"'
-        assert (building_blocks['Hex'] - 162.05282) < 0.001, f'The mass of Hex should be 162.05282, not {building_blocks["Hex"]}'
-        assert (building_blocks['HexNAc'] - 203.07937) < 0.001, f'The mass of HexNAc should be 203.07937, not {building_blocks["Hex"]}'
+        assert all(('Hex', 'HexNAc' in building_block_masses)), 'the building blocks must contain "Hex" and "HexNAc"'
+        assert (building_block_masses['Hex'] - 162.05282) < 0.001, f'The mass of Hex should be 162.05282, not {building_block_masses["Hex"]}'
+        assert (building_block_masses['HexNAc'] - 203.07937) < 0.001, f'The mass of HexNAc should be 203.07937, not {building_block_masses["Hex"]}'
+
+        self.isotope_mass_unit = 1.003355
 
         # setup min and max composition
         if min_composition is None:
-            min_composition = {k: 0 for k in building_blocks}
+            min_composition = {k: 0 for k in building_block_masses}
         if max_composition is None:
-            max_composition = {k: float('inf') for k in building_blocks}
+            max_composition = {k: float('inf') for k in building_block_masses}
 
-        self.building_blocks = building_blocks
-        assert building_block_codes.keys() == building_blocks.keys(), \
+        self.building_blocks = building_block_masses
+        assert building_block_codes.keys() == building_block_masses.keys(), \
             'building_blocks and building_block_codes must have the same keys'
         self.bb_codes = building_block_codes
-        assert min_composition.keys() == building_blocks.keys(), \
+        assert min_composition.keys() == building_block_masses.keys(), \
             'building_blocks and min_composition must have the same keys'
         self.min_composition = min_composition
-        assert max_composition.keys() == building_blocks.keys(), \
+        assert max_composition.keys() == building_block_masses.keys(), \
             'building_blocks and max_composition must have the same keys'
         self.max_composition = max_composition
         self.glycan_mass_error = glycan_mass_error
@@ -81,7 +77,7 @@ class glycanCompositionGenerator(object):
 
 
         # for creation of tuples to loop over. padding for the nested_loops_8 method
-        self._bb_names = tuple(building_blocks.keys())
+        self._bb_names = tuple(building_block_masses.keys())
 
         def _make_padded_tuple(pad_val, vals_dict, tup_len, keys=self._bb_names):
             """
@@ -100,8 +96,9 @@ class glycanCompositionGenerator(object):
                 The keys (in order) for vals_dict
 
             Returns
-                A padded tuple of length tup_len
             -------
+            tuple
+                A padded tuple of length tup_len
 
             """
             return tuple([pad_val for _ in range(tup_len - len(keys))] + [vals_dict[k] for k in keys])
@@ -109,25 +106,47 @@ class glycanCompositionGenerator(object):
         self._make_padded_tuple = _make_padded_tuple
 
         # pick the algorithm for generate_composition
-        if len(building_blocks) <= 8:
-            self.generate_composition = self.nested_loops_8
+        if len(building_block_masses) <= 8:
+            self.loops_algorithm_function = self.nested_loops_8
             # create padded tuples to loop over
             self._masses = self._make_padded_tuple(1e6, self.building_blocks, tup_len=8)
             self._max_comp = self._make_padded_tuple(0, self.max_composition, tup_len=8)
         else:
-            self.generate_composition = self.nested_loops_recursive
+            self.loops_algorithm_function = self.nested_loops_recursive
             # no actual padding but use the same function to get a tuple
             self._masses = self._make_padded_tuple(1, self.building_blocks, tup_len=len(self._bb_names))
             self._max_comp = self._make_padded_tuple(0, self.max_composition, tup_len=len(self._bb_names))
             warnings.warn('There are more than 8 building blocks. Using a slower algorithm. What is this glycan?!')
 
+    # wrapper function for use of the correct algorithm and setting the isotope offset
+    def generate_composition(self, glycan_mr: float, mass_offset: int) -> list[CompositionProperties]:
+        """
+        generate compositions that fit in the glycan_mr + mass_offset
 
-    def nested_loops_8(self, glycan_mr: float,
-                       min_comp: tuple = None,
-                       max_comp: tuple = None,
-                       masses: tuple = None,
-                       bb_names: tuple = None,
-                       mass_error: float = None) -> list[dict]:
+        Parameters
+        ----------
+        glycan_mr: float
+            the mass of the glycan (ad calcualted by the decomposer)
+        mass_offset: int
+            isotope offset - how many isotope masses to offset the glycan_mr
+
+        Returns
+        -------
+        list[CompositionProperties]
+            A list of CompositionProperties objects with the found compositions
+
+
+        """
+        corrected_glycan_mr = glycan_mr + mass_offset * self.isotope_mass_unit
+        comp_dicts = self.loops_algorithm_function(corrected_glycan_mr)
+        compositions = []
+        for comp in comp_dicts:
+            compositions.append(CompositionProperties(glycan_composition=comp, building_blocks=self.building_blocks,
+                                                      building_block_codes=self.bb_codes, corrected_glycan_mr=corrected_glycan_mr,
+                                                      isotope_offset=mass_offset))
+        return compositions
+
+    def nested_loops_8(self, glycan_mr: float) -> list[dict]:
         """
         Finds all compositions of building blocks (masses) that fit in glycan_mr within mass_error
         Work on exactly 8 building blocks
@@ -135,46 +154,20 @@ class glycanCompositionGenerator(object):
         ----------
         glycan_mr : float
             The neutral mass of the full glycan
-        min_comp : tuple of length 8
-            The minimum number of each building block to be in an output composition
-            Same order as masses
-            The default is a tuple from self.min_composition
-        max_comp : tuple of length 8
-            The maximum number of each building block to be in an output composition
-            Same order as masses
-            The default is all self.max_composition
-        masses : tuple of length 8
-            The masses of 8 building blocks that make up the composition
-            The default is self._masses
-        bb_names : tuple of length 8
-            The names of the 8 building blocks that make up the composition
-        mass_error : float
-            The mass error for matching compositions to glycan_mr
 
         Returns
         -------
-        List of dict
-        A list of compositions. Each composition is a dict with the present bb_names as keys and the count as values
+        List[dict[str,int]]
+            A list of compositions. Each composition is a dict with the present bb_names as keys and the count as values
         -------
 
         """
         # set parameters
-        if min_comp is None:
-            min_comp = self._make_padded_tuple(0, self.min_composition, tup_len=8)
-        if max_comp is None:
-            max_comp = self._max_comp
-        else:
-            assert len(max_comp) == 8
-        if masses is None:
-            masses = self._masses
-        else:
-            assert len(masses) == 8
-        if bb_names is None:
-            bb_names = self._bb_names
-        else:
-            assert len(bb_names) == 8
-        if mass_error is None:
-            mass_error = self.glycan_mass_error
+        min_comp = self._make_padded_tuple(0, self.min_composition, tup_len=8)
+        max_comp = self._max_comp
+        masses = self._masses
+        bb_names = self._bb_names
+        mass_error = self.glycan_mass_error
 
         if self.glycan_mass_error_unit == 'Da':
             glycan_mr_plus_error = glycan_mr + mass_error
@@ -263,8 +256,8 @@ class glycanCompositionGenerator(object):
 
         Returns
         -------
-        List of dict
-        A list of compositions. Each composition is a dict with the present bb_names as keys and the count as values
+        List[dict[str,int]]
+            A list of compositions. Each composition is a dict with the present bb_names as keys and the count as values
 
         """
         min_comp = self._make_padded_tuple(0, self.min_composition, tup_len=len(self._bb_names))
@@ -294,11 +287,7 @@ class glycanCompositionGenerator(object):
 
 
 
-                good_compositions_8 = self.nested_loops_8(glycan_mr=glycan_mr_for_8, min_comp=min_comp[rec_counter:],
-                                                          max_comp=self._max_comp[rec_counter:],
-                                                          masses=self._masses[rec_counter:],
-                                                          bb_names=self._bb_names[rec_counter:],
-                                                          mass_error=mass_error_for_8)
+                good_compositions_8 = self.nested_loops_8(glycan_mr=glycan_mr_for_8)
                 for comp_8 in good_compositions_8:
                     good_comp = {k: v for (k, v) in zip(self._bb_names, composition[:rec_counter])}
                     for k, v in comp_8.items():
