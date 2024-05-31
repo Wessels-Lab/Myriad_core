@@ -8,7 +8,7 @@ from .utils import get_mass_intensity_sorted
 import numpy as np
 from typing import Tuple
 
-class ionFinder(object):
+class IonFinder(object):
     """
     This class finds ions in a spectrum
 
