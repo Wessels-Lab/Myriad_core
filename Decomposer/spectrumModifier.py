@@ -5,11 +5,12 @@ Created on Tue Oct  5 15:09:36 2021
 @author: Gad.Armony
 """
 
-from bdal.paser.ionFinder.utils import get_mass_index
+from bdal.paser.IonFinder.utils import get_mass_index
 import numpy as np
 import pyopenms as oms
 
-class spectrumModifier(object):
+
+class SpectrumModifier(object):
     """
         This class modified the a spectrum to remove oxonium ions.
         It looks only for 1+ and assumes the monoisotopic peak is the most intense.
@@ -46,7 +47,7 @@ class spectrumModifier(object):
                  mass_error: float = 0.02,
                  isotope_mass_error: float = 0.02,
                  mass_error_unit: str = 'Da',
-                 number_of_isotopes: int = 5,
+                 number_of_isotopes: int = 3,
                  min_int: float = None,
                  min_int_thresholds: tuple = None,
                  int_type: str = 'relative',
@@ -61,6 +62,8 @@ class spectrumModifier(object):
         assert mass_error_unit in ['Da', 'ppm'], f"mass_error_unit must be either 'Da' or 'ppm', not {mass_error_unit}"
         self.isotope_mass_error = isotope_mass_error
         self.number_of_isotopes = number_of_isotopes
+        if min_int is None and min_int_thresholds is None:
+            min_int = 0
         assert (min_int is None) ^ (min_int_thresholds is None), \
             f"Can use only one. Either min_int ({min_int}) or min_int_thresholds ({min_int_thresholds})"
         self.min_int = min_int
@@ -76,19 +79,18 @@ class spectrumModifier(object):
         self.int_type = int_type
 
         if deconvolution_params is None:
-            deconvolution_params = {'fragment_tolerance': 30,
+            deconvolution_params = {'fragment_tolerance': 20,
                                     'fragment_unit_ppm': True,
+                                    'number_of_final_peaks': 0,
                                     'min_charge': 1,
-                                    'max_charge': 6,
                                     'keep_only_deisotoped': False,
                                     'min_isopeaks': 3,
                                     'max_isopeaks': 10,
                                     'make_single_charged': True,
                                     'annotate_charge': False,
                                     'annotate_iso_peak_count': False,
-                                    'use_decreasing_model': True,
-                                    'start_intensity_check': 3,
                                     'add_up_intensity': True}
+
         self.deconvolution_params = deconvolution_params
 
     def remove_mz(self, spectrum: np.ndarray,
@@ -238,9 +240,9 @@ class spectrumModifier(object):
                (base_spectrum[:, 0] >= cutoff_mass))
         return base_spectrum[idx]
 
-    def deiso_spec(self, spectrum):
+    def deiso_spec(self, spectrum, max_charge):
         spec = oms.MSSpectrum()
         deiso = oms.Deisotoper()
         spec.set_peaks((spectrum[:, 0], spectrum[:, 1]))
-        deiso.deisotopeAndSingleCharge(spec, **self.deconvolution_params)
+        deiso.deisotopeWithAveragineModel(spec, max_charge=max_charge, **self.deconvolution_params)
         return np.array(spec.get_peaks()).T
