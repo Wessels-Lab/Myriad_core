@@ -1,5 +1,5 @@
 import warnings
-from bdal.paser.pe_g8s_py_myriad_glycan_id.DataClasses import CompositionProperties
+from Myriad_glycan_id.DataClasses import CompositionProperties
 
 
 class GlycanCompositionGenerator(object):

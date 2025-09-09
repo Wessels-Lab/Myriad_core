@@ -34,7 +34,7 @@ class IonFinder(object):
 
     """
 
-    def __init__(self, ions: Tuple[float] = None,
+    def __init__(self, ions: Tuple[float,...] = None,
                  mass_error: float = 0.02,
                  mass_error_unit: str = 'Da',
                  min_int: float = None,  # default is 0
@@ -42,11 +42,6 @@ class IonFinder(object):
                  int_type: str = 'relative'):
         """
         Refer to the class documentation
-
-        Parameters
-        ----------
-        min_int_thresholds
-
         """ 
         self.ions = ions
         self.mass_error = mass_error

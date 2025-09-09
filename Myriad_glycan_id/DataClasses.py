@@ -1,9 +1,9 @@
-import dataclasses
+
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from bdal.paser.pe_g8s_py_myriad_glycan_id.utils import check_min_comp
+from Myriad_glycan_id.utils import check_min_comp
 
 
 @dataclass

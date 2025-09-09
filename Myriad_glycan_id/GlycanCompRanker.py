@@ -2,10 +2,10 @@
 
 import pandas as pd
 import numpy as np
-from bdal.paser.IonFinder import IonFinder
 
-from bdal.paser.pe_g8s_py_myriad_glycan_id.utils import str_to_comp_dict, check_min_comp
-from bdal.paser.pe_g8s_py_myriad_glycan_id.DataClasses import SpectrumProperties, CompositionProperties
+from IonFinder import IonFinder
+from Myriad_glycan_id.utils import str_to_comp_dict, check_min_comp
+from Myriad_glycan_id.DataClasses import SpectrumProperties, CompositionProperties
 
 class GlycanCompRanker:
     def __init__(self, building_block_masses: dict[str, float],
@@ -57,10 +57,9 @@ class GlycanCompRanker:
         assert ~ox_ions['name'].duplicated().any(), \
             f"oxonium ios names contain duplicates: {ox_ions.loc[ox_ions['name'].duplicated(False), 'name']}"
         self.ox_ions = ox_ions.copy()
-        # convert str to dict
-        # TODO: move this to main.py
-        self.ox_ions['composition'] = self.ox_ions['composition'].apply(str_to_comp_dict)\
-                                          .apply(lambda x: {reverse_bb_codes[k]: v for k, v in x.items()})
+        # # convert str to dict
+        # self.ox_ions['composition'] = self.ox_ions['composition'].apply(str_to_comp_dict)\
+        #                                   .apply(lambda x: {reverse_bb_codes[k]: v for k, v in x.items()})
         self.mass_error = mass_error
         self.mass_error_unit = mass_error_unit
         self.minimum_ion_intensity = minimum_ion_intensity
@@ -124,6 +123,9 @@ class GlycanCompRanker:
         list[CompositionProperties]
             The input list of compositions (CompositionProperties objects) with rank populated (and other attributes too)
             SpectrumProperties with the spectrum properties used for the ranking
+
+        SpectrumProperties
+            Spectrum level properties that are used for the composition ranking.
 
         """
         spec_properties = SpectrumProperties()
