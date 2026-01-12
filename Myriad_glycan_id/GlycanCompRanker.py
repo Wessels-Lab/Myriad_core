@@ -4,105 +4,103 @@ import pandas as pd
 import numpy as np
 
 from IonFinder import IonFinder
-from Myriad_glycan_id.utils import str_to_comp_dict, check_min_comp
+from Myriad_glycan_id import GlyCompAssembler
+
+from Myriad_glycan_id.utils import check_min_comp, add_dHex_to_compositions
 from Myriad_glycan_id.DataClasses import SpectrumProperties, CompositionProperties
 
+
 class GlycanCompRanker:
-    def __init__(self, building_block_masses: dict[str, float],
-                 building_block_codes: dict[str, str],
+    def __init__(self, building_blocks: pd.DataFrame,
                  ox_ions: pd.DataFrame,
-                 mass_error: float = 20,
-                 mass_error_unit: str = 'ppm',
-                 minimum_ion_intensity: float = 0.01,
-                 minimum_intensity_type: str = 'relative',
-                 extra_ions: tuple = (1013.3434, 1054.37, 1095.396),  # Y5(HH, HN, NN)
-                 extra_ions_names: tuple = ('pep+H5N2', 'pep+H4N3', 'pep+H3N4')
+                 Y5Y1_evidence_ions: pd.DataFrame,
+                 fucose_evidence_ions: pd.DataFrame,
+                 Y0Y1_ions: pd.DataFrame,
+                 extra_Y_ions: pd.DataFrame,
+                 minimum_fucose_count: int,  # 2
+                 mass_error: float, # 20
+                 mass_error_unit: str, # 'ppm'
+                 minimum_ion_intensity: float, # 0.01
+                 minimum_intensity_type: str,  # 'relative'
+                 filters_to_apply: list
                  ):
         """
         This class ranks glycan compositions according the ions found in a spectrum
 
             Parameters
             ----------
-            building_block_masses: dict[str, float]
-                The masses of the glycan building blocks (sugars)
-            building_block_codes: dict[str, float]
-                single letter codes for the building blocks
+            building_blocks: pd.DataFrame
+        The building blocks from the input parameters, parsed into a DataFrame
+            index:
+                'name': str,
+            columns:
+                'mass':float,
+                'code': str, len == 1,
+                'min_comp': int,
+                'max_comp': int,
+                'type':str, in ('Hexose', 'Hexose-NAc', 'Deoxy-hexose', 'Sialic-acid')
             ox_ions: pd.DataFrame
                 A table of oxonium ions to use for the composition ranking.
-                Include columns: name, composition, mass
-            mass_error: float, optional
+                    columns:
+                        'name': str
+                        'compossition': dict[str,int]
+                        'mass': float
+            Y5Y1_evidence_ions: pd.DataFrame
+                A table of Y ions to use for the composition ranking, compare compositions. columns like ox_ions.
+             fucose_evidence_ions: dict[str,pd.DataFrame]
+                A dictionary of tables of fucosylated Y ions to use for the composition ranking, presence is fucose evidence.
+                 Keys are Deoxy-Hexose building block name, values are data frames with columns like ox_ions.
+             Y0Y1_ions: pd.DataFrame
+                A table of Y0- and Y1-related ions NOT used in ranking but are reported as Y ions. columns like ox_ions.
+             extra_Y_ions: pd.DataFrame
+                A table of extra Y ions NOT used in ranking but are reported alogside the Y ions. columns like ox_ions.
+            minimum_fucose_count: int,
+                The minimum count of fucose_evidence_ions to be considered as evidence for the presence of a fucose-like sugar
+            mass_error: float
                 The mass tolerance. Half the width of the window to look around the masses.
-                The default is 20.
-            mass_error_unit: str, optional
+            mass_error_unit: str
                 The units for mass_error. Either 'Da' or 'ppm'
-                The default is 'ppm'.
-            minimum_ion_intensity: float, optional
+            minimum_ion_intensity: float
                 The minimum relative intensity for an ion to be considered for ranking a composition.
-                The default is 0.01 (1%).
-            minimum_intensity_type: str, optional
+            minimum_intensity_type: str
                 The type of minimum_ion_intensity either 'relative' or 'absolute'.
-                The default is 'relative'
-            extra_ions: tuple[float], optional
-                extra Y ions offsets (from peptide + HexNAc) to look for in the spectrum, these are NOT used for
-                 the ranking, only their intensity is reported.
-                 The default is (1013.3434, 1054.37, 1095.396) which are (Y5: HH, HN, NN).
-            extra_ions_names, tuple[str]
+            filters_to_apply: list
+                What boolean columns to use for filtered_glycan_rank
         """
-        self.building_blocks = building_block_masses
-        assert building_block_codes.keys() == building_block_masses.keys(), \
-            'building_blocks and building_block_codes must have the same keys'
-        self.bb_codes = building_block_codes
-        # swap key and value since the compositions come with the one-letter code
-        reverse_bb_codes = {k: v for v, k in building_block_codes.items()}
+        self.building_blocks = building_blocks
         assert ~ox_ions['name'].duplicated().any(), \
             f"oxonium ios names contain duplicates: {ox_ions.loc[ox_ions['name'].duplicated(False), 'name']}"
         self.ox_ions = ox_ions.copy()
-        # # convert str to dict
-        # self.ox_ions['composition'] = self.ox_ions['composition'].apply(str_to_comp_dict)\
-        #                                   .apply(lambda x: {reverse_bb_codes[k]: v for k, v in x.items()})
+        self.Y5Y1_evidence_ions = Y5Y1_evidence_ions.copy()
+        self.fucose_evidence_ions_no_fuc = fucose_evidence_ions.copy()
+        self.fucose_evidence_ions = add_dHex_to_compositions(fucose_evidence_ions, GlyCompAssembler(building_blocks))
+        self.Y0Y1_ions = Y0Y1_ions.copy()
+        self.extra_Y_ions = extra_Y_ions.copy()
         self.mass_error = mass_error
         self.mass_error_unit = mass_error_unit
-        self.minimum_ion_intensity = minimum_ion_intensity
+        self.minimum_ion_intensity =minimum_ion_intensity
         self.minimum_intensity_type = minimum_intensity_type
-        self.extra_ions = extra_ions
-        self.extra_ions_names = extra_ions_names
+        self.minimum_fucose_count = minimum_fucose_count
+        self.filters_to_apply = filters_to_apply
 
-        # hard-coded attributes
-        self.fucose_mass = 146.0579
-        fucose_name = [k for k in building_block_masses if abs(building_block_masses[k] - self.fucose_mass) < 0.001]
-        self._fucose_name = fucose_name[0] if len(fucose_name) > 0 else None
-        self.pattern_fucose_shadow_names = ('pep+N1F1', 'pep+N2F1', 'pep+H1N2F1', 'pep+H2N2F1', 'pep+H3N2F1')
-        self.pattern_fucose_shadow = (0.0, 203.0794, 365.1322, 527.185, 689.2378)
-        self._min_fucose_shadow_count = 2  # minimum number of peaks to consider the fucose shadow present
-
-        self.Y5Y1_ions_names = ('pep+N2', 'pep+H1N2', 'pep+H2N2', 'pep+H1N3', 'pep+H3N2', 'pep+H4N2', 'pep+H3N3')
-        self.Y5Y1_ions_compositions = pd.Series({203.0794: {'Hex': 0, 'HexNAc': 2},
-                                                 365.1322: {'Hex': 1, 'HexNAc': 2},
-                                                 527.1850: {'Hex': 2, 'HexNAc': 2},
-                                                 568.2116: {'Hex': 1, 'HexNAc': 3},
-                                                 689.2378: {'Hex': 3, 'HexNAc': 2},
-                                                 851.2060: {'Hex': 4, 'HexNAc': 2},
-                                                 892.3172: {'Hex': 3, 'HexNAc': 3}})
-        # N-glycan core pattern peaks that are not part of Y5Y1
-        self.pattern_names = ('pep-OH', 'pep', 'pep+N_frag', 'pep+N1')
-        self.pattern = (-220.0821, -203.0794, -120.0423, 0.0)
 
         # set up two ions finders
         # for oxonium ions
-        self.ox_finder = IonFinder(ions=tuple(self.ox_ions['mass']),
+        self.ox_finder = IonFinder(ions=self.ox_ions['mass'].to_numpy(),
                                    mass_error=self.mass_error,
                                    mass_error_unit=self.mass_error_unit,
                                    min_int=self.minimum_ion_intensity,
                                    int_type=self.minimum_intensity_type)
         # for all other ions
-        self.ion_finder = IonFinder(ions=tuple(),
+        self.ion_finder = IonFinder(ions=np.array([]),
                                     mass_error=self.mass_error,
                                     mass_error_unit=self.mass_error_unit,
                                     min_int=self.minimum_ion_intensity,
                                     int_type=self.minimum_intensity_type)
 
+
     def rank_compositions(self, compositions: list[CompositionProperties], spectrum: np.ndarray,
-                          Y1_mz:float, Y1_charge: int):
+                          Y1_mz:float, Y1_charge: int) -> tuple[list[CompositionProperties], SpectrumProperties]:
         """
         Rank a list of compositions (CompositionProperties objects) according to a spectrum.
         This is THE function to call from this object.
@@ -136,29 +134,29 @@ class GlycanCompRanker:
         for comp in compositions:
             # calculate composition properties required for evidence calculations
             comp.calculate_comp_properties(self.ox_ions, spec_properties.oxonium_ions_intensity)
-            # calcualte evidence components
+            # calcualte evidence components (and store data in the composition object)
             comp.oxonium_evidence = self.calculate_oxonium_evidence(comp, spec_properties.oxonium_ions_intensity)
             comp.building_blocks_coverage = self.calculate_bb_coverage(comp)
-            if self._fucose_name:
-                comp.fucose_evidence = self.calculate_fucose_evidence(comp.glycan_composition,
-                                                                      spec_properties.fucose_shadow_count)
+            if (self.building_blocks['type'] == 'Deoxy-hexose').any():
+                comp.fucose_evidence = self.calculate_fucose_evidence(comp, spec_properties)
             else:
                 comp.fucose_evidence = None
-            comp.Y5Y1_evidence = self.calculate_Y5Y1_evidence(comp.glycan_composition, spec_properties)
+            comp.Y5Y1_evidence = self.calculate_Y5Y1_evidence(comp, spec_properties)
 
         if len(compositions) > 0:
             # rank the compositions
             # TODO: if taking a lot of time, do not use pandas to do the ranking.
             ranking = pd.DataFrame([comp.__dict__ for comp in compositions])
+            evidence_columns = ['oxonium_evidence', 'building_blocks_coverage', 'fucose_evidence', 'Y5Y1_evidence']
             # rank each component on its own (larger is better), sum the rankings, and rank again (smaller is better)
-            ranking['glycan_rank'] = ranking[['oxonium_evidence', 'building_blocks_coverage', 'fucose_evidence', 'Y5Y1_evidence']].\
-                rank(method='dense', ascending=False).sum(axis='columns').rank(method='dense', ascending=True)
+            ranking['glycan_rank'] = ranking[evidence_columns].rank(method='dense', ascending=False)\
+                .sum(axis='columns').rank(method='dense', ascending=True).astype('Int32')
             # apply filters and then rerank
-            ranking['filtered_glycan_rank'] = ranking.loc[ranking['has_core'] & ranking['sia_smaller_hn'], 'glycan_rank']\
-                .rank(method='dense', ascending=True)
+            ranking['filtered_glycan_rank'] = ranking.loc[ranking[self.filters_to_apply].all(axis='columns'), evidence_columns]\
+                .rank(method='dense', ascending=False).sum(axis='columns').rank(method='dense', ascending=True).astype('Int32')
             for comp, rank, filtered_rank in zip(compositions, ranking['glycan_rank'], ranking['filtered_glycan_rank']):
-                comp.glycan_rank = rank
-                comp.filtered_glycan_rank = filtered_rank
+                comp.glycan_rank = rank if pd.notna(rank) else None
+                comp.filtered_glycan_rank = filtered_rank if pd.notna(filtered_rank) else None
 
         return compositions, spec_properties
 
@@ -166,7 +164,7 @@ class GlycanCompRanker:
     def get_ion_intensities(self, Y1_mz: float,
                             Y1_charge: int,
                             spectrum: np.ndarray,
-                            data_class: SpectrumProperties):
+                            spec_properties: SpectrumProperties):
         """
         Extract the ion intensities from the spectrum, oxonium ions and Y ions.
         """
@@ -174,31 +172,32 @@ class GlycanCompRanker:
         ox_ions = self.ox_finder.find_ions(spectrum)
         if self.minimum_intensity_type != 'relative':
             ox_ions = ox_ions / spectrum[:, 1].max()
-        data_class.oxonium_ions_intensity = ox_ions
+        spec_properties.oxonium_ions_intensity = ox_ions
 
         # get fucose shadow intensities
-        pattern_masses_for_fuc = tuple(Y1_mz + x/Y1_charge for x in self.pattern_fucose_shadow)
-        pattern_ions_for_fuc = self.ion_finder.find_ions(spectrum, pattern_masses_for_fuc)
-        fucose_masses = tuple(x + self.fucose_mass / Y1_charge for x in pattern_masses_for_fuc)
-        fucose_ions = self.ion_finder.find_ions(spectrum, fucose_masses)
-        # if there is no pattern ion, don't consider a fucose shadow ion
-        fucose_ions[np.isnan(pattern_ions_for_fuc)] = np.nan
-        data_class.fucose_ions_intensity = fucose_ions
+        masses_without_fucose = tuple(Y1_mz + x / Y1_charge for x in self.fucose_evidence_ions_no_fuc['mass'])
+        ions_without_fucose = self.ion_finder.find_ions(spectrum, masses_without_fucose)
+        for dHex_name in self.fucose_evidence_ions:
+            fucose_masses = tuple(Y1_mz + x/Y1_charge for x in self.fucose_evidence_ions[dHex_name]['mass'])
+            fucose_ions = self.ion_finder.find_ions(spectrum, fucose_masses)
+            # if there is no pattern ion, don't consider a fucose shadow ion
+            fucose_ions[np.isnan(ions_without_fucose)] = np.nan
+            spec_properties.fucose_ions_intensity[dHex_name] = fucose_ions
 
-        # get pattern intensities
-        pattern_masses = tuple(Y1_mz + x/Y1_charge for x in self.pattern)
+        # get Y0Y1 intensities
+        pattern_masses = tuple(Y1_mz + x/Y1_charge for x in self.Y0Y1_ions['mass'])
         pattern_ions = self.ion_finder.find_ions(spectrum, pattern_masses)
-        data_class.pattern_ions_intensity = pattern_ions
+        spec_properties.pattern_ions_intensity = pattern_ions
 
         # get Y5Y1 ions intensities
-        Y5Y1_masses = tuple(Y1_mz + x/Y1_charge for x in self.Y5Y1_ions_compositions.keys())
+        Y5Y1_masses = tuple(Y1_mz + x/Y1_charge for x in self.Y5Y1_evidence_ions['mass'])
         Y5Y1_ions = self.ion_finder.find_ions(spectrum, Y5Y1_masses)
-        data_class.Y5Y1_ions_intensity = Y5Y1_ions
+        spec_properties.Y5Y1_ions_intensity = Y5Y1_ions
 
         # get extra ions intensities
-        extra_masses = tuple(Y1_mz + x/Y1_charge for x in self.extra_ions)
+        extra_masses = tuple(Y1_mz + x/Y1_charge for x in self.extra_Y_ions['mass'])
         extra_ions = self.ion_finder.find_ions(spectrum, extra_masses)
-        data_class.extra_ions_intensity = extra_ions
+        spec_properties.extra_ions_intensity = extra_ions
 
     def calculate_spec_properties(self, spectrum, spec_properties):
         """
@@ -207,55 +206,93 @@ class GlycanCompRanker:
         spec_properties.spectrum_oxonium_count = np.count_nonzero(~np.isnan(spec_properties.oxonium_ions_intensity))
         spec_properties.oxonium_relative_intensity_sum = np.nansum(spec_properties.oxonium_ions_intensity) / spectrum[:,
                                                                                                          1].sum()
-        spec_properties.fucose_shadow_count = np.count_nonzero(~np.isnan(spec_properties.fucose_ions_intensity))
-        spec_properties.fucose_shadow_intensity_sum = np.nansum(spec_properties.fucose_ions_intensity)
 
     # composition evidence methods
     def calculate_oxonium_evidence(self, composition: CompositionProperties, ox_ions_intensities: np.ndarray):
         """
-        Calculates the oxonium evidence - oxonium count * oxonium intensity
+        Calculates the oxonium evidence = oxonium count * oxonium intensity
         """
-        good_ions = self.ox_ions['composition'].apply(lambda x: check_min_comp(composition.glycan_composition, x))
-        comp_ox_count = np.count_nonzero(~np.isnan(ox_ions_intensities[good_ions]))
-        comp_ox_int = np.nansum(ox_ions_intensities[good_ions])
+        relevant_ions = self.ox_ions['composition'].apply(lambda x: check_min_comp(composition.glycan_composition, x))
+        comp_ox_ions_mask = relevant_ions.to_numpy() & ~np.isnan(ox_ions_intensities)
+        comp_ox_count = np.count_nonzero(comp_ox_ions_mask)
+        comp_ox_int = np.nansum(ox_ions_intensities[relevant_ions])
 
+        composition.composition_used_oxonium_mask = comp_ox_ions_mask
+        composition.composition_relevant_oxonium_mask = relevant_ions
         composition.composition_oxonium_count = comp_ox_count
         composition.composition_oxonium_intensity = comp_ox_int
 
         return round(comp_ox_count*comp_ox_int, 6)
 
-    def calculate_bb_coverage(self, comp_properties: CompositionProperties):
+    def calculate_bb_coverage(self, comp_properties: CompositionProperties) -> float:
         """
         Calculates the building block coverage - what fraction of the building blocks in the composition
         are also in the oxonium ions.
         """
-        bb_with_ox_count = sum([comp_properties.bb_ox_count[k] > 0 for k in comp_properties.bb_ox_count])
-        bb_in_comp_count = sum([~np.isnan(comp_properties.bb_ox_count[k]) for k in comp_properties.bb_ox_count])
+        bb_with_ox_count = sum([comp_properties.bb_ox_count[k] > 0 for k in comp_properties.bb_ox_count
+                                if pd.notna(comp_properties.bb_ox_count[k])])
+        bb_in_comp_count = sum([pd.notna(comp_properties.bb_ox_count[k]) for k in comp_properties.bb_ox_count])
         return bb_with_ox_count / bb_in_comp_count
 
-    def calculate_fucose_evidence(self, composition: dict, fucose_count: int):
+    def calculate_fucose_evidence(self, composition: CompositionProperties, spec_properties: SpectrumProperties) -> int:
         """
-        Calculates if three is evidence for a fucose according to the fucose shadow.
+        Calculates if there is evidence for a fucose according to the fucose shadow.
 
-        returns 1 if there is a fucose in the composition and there are fucose shadow peaks
-            or if there is no fucose in the composition and there are no fucose shadow peaks
-        returns 0 if there is a fucose in the composition and there are no fucose shadow peaks, or vice versa
+        for each dHex building block:
+            The evidence is 1 if there is this dHex building block in the composition and there are fucose shadow peaks with this building block
+                or if this dHex in not the composition and there are no fucose shadow peaks with this building block
+            The evidence is 0 if this dHex building block is in the composition and there are no fucose shadow peaks, or vice versa
         """
-        fucose_in_composition = composition[self._fucose_name] > 0
-        fucose_in_spectrum = fucose_count >= self._min_fucose_shadow_count
+        def calculate_single_dHex_evidence(dHex_name: str) -> int:
+            ## is there a fucose in the composition?
+            dHex_in_composition = composition.glycan_composition[dHex_name] > 0
 
-        # both True or False is good, only one is bad
-        return 0 if fucose_in_composition ^ fucose_in_spectrum else 1
+            ## is there evidence for a fucose in the spectrum?
+            # Get fucose count
+            # Check if the fucose_shadow_ions are contained in the composition
+            composition_larger_than_fuc_shadow = self.fucose_evidence_ions[dHex_name]['composition'].apply(lambda x: check_min_comp(composition.glycan_composition, x))
+            # The fuc_shadow ions that are present in the spectrum
+            fuc_ions_in_spec = ~np.isnan(spec_properties.fucose_ions_intensity[dHex_name])
+            # count fuc_shadow ions found in the spectrum contained in the composition
+            fucose_count = composition_larger_than_fuc_shadow[fuc_ions_in_spec].sum()
 
-    def calculate_Y5Y1_evidence(self, composition: dict, spec_properties: SpectrumProperties):
+            fucose_in_spectrum = fucose_count >= self.minimum_fucose_count
+
+            # store composition properties in composition
+            fucose_used_mask = fuc_ions_in_spec & composition_larger_than_fuc_shadow.to_numpy()
+            composition.fucose_shadow_used_mask[dHex_name] = fucose_used_mask
+            composition.fucose_shadow_relevant_mask[dHex_name] = composition_larger_than_fuc_shadow.to_numpy()
+            if composition.fucose_shadow_count is None:
+                composition.fucose_shadow_count = 0
+            composition.fucose_shadow_count += fucose_count
+            if composition.fucose_shadow_intensity_sum is None:
+                composition.fucose_shadow_intensity_sum = 0
+            composition.fucose_shadow_intensity_sum += spec_properties.fucose_ions_intensity[dHex_name][fucose_used_mask].sum()
+            # both True or False is good, only one is bad
+            return 0 if dHex_in_composition ^ fucose_in_spectrum else 1
+
+        dHex_evideces = []
+        for dHex_name in self.building_blocks.index[self.building_blocks['type'] == 'Deoxy-hexose']:
+            dHex_evideces.append(calculate_single_dHex_evidence(dHex_name))
+
+        return sum(dHex_evideces)/len(dHex_evideces)
+
+    def calculate_Y5Y1_evidence(self, composition: CompositionProperties, spec_properties: SpectrumProperties) -> float:
         """
         Calculate the evidence for the Y5 Y1 ions
 
-        returns 1 if all found Y ions are contained in the composition, 0 if they are not.
+        returns the fraction of ions found in the spectrum that support the composition.
         """
-        # check only compositions of ions that are present in the spectrum
-        compositions_to_check = self.Y5Y1_ions_compositions[~np.isnan(spec_properties.Y5Y1_ions_intensity)]
-        composition_larger_than_all = compositions_to_check.apply(lambda x: check_min_comp(composition, x)).all()
+        # Check if the Y ions are contained in the composition
+        composition_larger_than_Y5Y1 = self.Y5Y1_evidence_ions['composition'].apply(lambda x: check_min_comp(composition.glycan_composition, x))
+        # The Y ions that are present in the spectrum
+        Y5Y1_ions_in_spec = ~np.isnan(spec_properties.Y5Y1_ions_intensity)
+        # What fraction of Y ions found in the spectrum are contained in the composition
+        # If there are no ions present then "all" of them support this composition
+        composition_larger_than_Y_fraction = composition_larger_than_Y5Y1[Y5Y1_ions_in_spec].mean() if Y5Y1_ions_in_spec.sum() > 0 else 1.0
+        # Which Y5Y1 ions are supporting this compositions
+        composition.composition_used_Y5Y1_mask = Y5Y1_ions_in_spec & composition_larger_than_Y5Y1.to_numpy()
+        composition.composition_relevant_Y5Y1_mask = composition_larger_than_Y5Y1.to_numpy()
 
         # composition should be larger than all
-        return 1 if composition_larger_than_all else 0
+        return composition_larger_than_Y_fraction

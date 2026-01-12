@@ -4,6 +4,7 @@ Created on Tue Oct  5 15:09:36 2021
 
 @author: Gad.Armony
 """
+from typing import Sequence
 
 from IonFinder.utils import get_mass_index
 import numpy as np
@@ -17,7 +18,7 @@ class SpectrumModifier(object):
 
         __init__ Parameters
         ----------
-        ions : tuple
+        ions : Sequence
             The ion masses ([M+H]1+) to remove
         mass_error : float, optional
             The mass tolerance for finding oxonium ions. Half the width of the window to look around the masses.
@@ -43,13 +44,13 @@ class SpectrumModifier(object):
 
         """
 
-    def __init__(self, ions: tuple,
+    def __init__(self, ions: Sequence,
                  mass_error: float = 0.02,
                  isotope_mass_error: float = 0.02,
                  mass_error_unit: str = 'Da',
                  number_of_isotopes: int = 3,
                  min_int: float = None,
-                 min_int_thresholds: tuple = None,
+                 min_int_thresholds: Sequence = None,
                  int_type: str = 'relative',
                  deconvolution_params=None):
         """
@@ -184,7 +185,7 @@ class SpectrumModifier(object):
         return mass_and_isotopes_index
 
     def remove_ions(self, spectrum: np.ndarray,
-                    ions: list = None,
+                    ions: Sequence = None,
                     return_removed_ions: bool = False):
         """
         Removes oxonium ions and their isotope peaks from the spectrum
@@ -194,8 +195,8 @@ class SpectrumModifier(object):
         spectrum : numpy array of shape (#,2)
             spec[:,0] are the m/z
             spec[:,1] are the intensities
-        ions : list-like, optional
-            An iterable, e.g. a list containing the m/z values to remove
+        ions : Sequence, optional
+            An sequence, e.g. a list containing the m/z values to remove
             The default is self.ions.values()
         return_removed_ions : bool, optional
             If True, returns also an array of the monoisotopic masses (from <ions>) that were removed.
@@ -219,12 +220,9 @@ class SpectrumModifier(object):
         removed_ions = []
         for ion_mass in ions:
             mod_spec = self.remove_mz(spectrum, ion_mass)
-            if mod_spec.shape[0] < spectrum.shape[0]:
-                removed_ions.append(ion_mass)
-            elif mod_spec.shape[0] == spectrum.shape[0]:
-                pass
-            else:
-                raise RuntimeError(f'Something went wrong. Removal of ion: {ion_mass} increased the number of peaks')
+            if return_removed_ions:
+                if mod_spec.shape[0] < spectrum.shape[0]:
+                    removed_ions.append(ion_mass)
             spectrum = mod_spec
         if return_removed_ions:
             return spectrum, np.array(removed_ions)

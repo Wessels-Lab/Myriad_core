@@ -150,13 +150,13 @@ class PatternFinder(object):
                     if offset == 0:
                         # for the 0 offset get the intensity of the exact mass
                         curr_found_pattern[idx+4] = (
-                            get_mass_intensity_sorted(spec, ref_mass + offset, 0, self.mass_error_unit)
-                            / largest_peak)
+                            get_mass_intensity_sorted(spec, np.array(ref_mass + offset), 0, self.mass_error_unit)
+                            / largest_peak)[0]
                         # for the rest use the mass error
                     else:
                         curr_found_pattern[idx+4] = (
-                            get_mass_intensity_sorted(spec, ref_mass + offset, self.mass_error, self.mass_error_unit)
-                            / largest_peak)
+                            get_mass_intensity_sorted(spec, np.array(ref_mass + offset), self.mass_error, self.mass_error_unit)
+                            / largest_peak)[0]
                 # there is always 1 not-nan value - the 0 offset
                 if (~np.isnan(curr_found_pattern)).sum() > 1:
                     # add charge, ref_mass, ref_int, and ref_mass_idx

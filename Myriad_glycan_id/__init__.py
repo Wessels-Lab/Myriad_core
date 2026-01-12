@@ -1,2 +1,3 @@
 from .GlycanCompGenerator import GlycanCompositionGenerator
 from .GlycanCompRanker import GlycanCompRanker
+from .GlyCompAssembler import GlyCompAssembler
