@@ -2,42 +2,54 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from IonFinder import IonFinder
+from common import IonFinder, GlyCompAssembler
 from Decomposer import PatternFinder, SpectrumModifier
 from Myriad_glycan_id import GlycanCompositionGenerator, GlycanCompRanker
-from IonFinder.utils import mz_from_mass, mass_from_mz
-from Myriad_glycan_id.utils import apply_bb_codes, comp_dict_to_str
-
+from utils import mass_from_mz, mz_from_mass, comp_dict_to_str, apply_bb_codes, assemble_ox_ions, assemble_Y1_offset_ions
+from parameter_tables import (ions_type_composition_table_ox_finder, oxonium_ions_type_composition_table, Y0Y1_ions,
+                              Y5Y1_evidence_compositions, fucose_evidence_compositions, extra_Y_ions)
 
 ## load spectrum
 spectrum_file = Path(__file__).parent / "spectrum_GTAGNALMDGASQLMGENR_H5N4S2.txt"
 spectrum = np.genfromtxt(spectrum_file.as_posix(), delimiter='\t')
+precursor_mz = 1025.1607096436799
+precursor_charge = 4
 
-# parameters
+# setup parameters
 mass_error = 20
 mass_error_unit = 'ppm'
-oxonium_ions = pd.DataFrame({'name': ['F', 'H', 'N', 'S-H2O', 'G-H2O', 'S', 'G', 'HF', 'H2', 'NF', 'HN', 'N2', 'HS', 'HG', 'H3', 'NS', 'NG', 'HNF', 'H2N', 'N2F', 'HN2', 'H4', 'HNS', 'HNG', 'H2NF', 'H3N', 'N2F2', 'HN2F', 'H2N2', 'HNFS', 'H5', 'HNFG', 'H2NS', 'H2NG', 'H3NF', 'HN2F2', 'H2N2F', 'H3N2', 'H2NFS', 'H6', 'H2NFG', 'H2N2F2', 'H3N2F', 'H3N3', 'H7', 'H3N2F2', 'H3N3F', 'H8', 'H3N4', 'H3N3F2', 'H3N4F', 'H9', 'H3N4F2', 'H10', 'H11', 'H12'],
-                     'composition': [{'dHex': 1}, {'Hex': 1}, {'HexNAc': 1}, {'NeuAc': 1}, {'NeuGc': 1}, {'NeuAc': 1}, {'NeuGc': 1}, {'Hex': 1, 'dHex': 1}, {'Hex': 2}, {'HexNAc': 1, 'dHex': 1}, {'Hex': 1, 'HexNAc': 1}, {'HexNAc': 2}, {'Hex': 1, 'NeuAc': 1}, {'Hex': 1, 'NeuGc': 1}, {'Hex': 3}, {'HexNAc': 1, 'NeuAc': 1}, {'HexNAc': 1, 'NeuGc': 1}, {'Hex': 1, 'HexNAc': 1, 'dHex': 1}, {'Hex': 2, 'HexNAc': 1}, {'HexNAc': 2, 'dHex': 1}, {'Hex': 1, 'HexNAc': 2}, {'Hex': 4}, {'Hex': 1, 'HexNAc': 1, 'NeuAc': 1}, {'Hex': 1, 'HexNAc': 1, 'NeuGc': 1}, {'Hex': 2, 'HexNAc': 1, 'dHex': 1}, {'Hex': 3, 'HexNAc': 1}, {'HexNAc': 2, 'dHex': 2}, {'Hex': 1, 'HexNAc': 2, 'dHex': 1}, {'Hex': 2, 'HexNAc': 2}, {'Hex': 1, 'HexNAc': 1, 'dHex': 1, 'NeuAc': 1}, {'Hex': 5}, {'Hex': 1, 'HexNAc': 1, 'dHex': 1, 'NeuGc': 1}, {'Hex': 2, 'HexNAc': 1, 'NeuAc': 1}, {'Hex': 2, 'HexNAc': 1, 'NeuGc': 1}, {'Hex': 3, 'HexNAc': 1, 'dHex': 1}, {'Hex': 1, 'HexNAc': 2, 'dHex': 2}, {'Hex': 2, 'HexNAc': 2, 'dHex': 1}, {'Hex': 3, 'HexNAc': 2}, {'Hex': 2, 'HexNAc': 1, 'dHex': 1, 'NeuAc': 1}, {'Hex': 6}, {'Hex': 2, 'HexNAc': 1, 'dHex': 1, 'NeuGc': 1}, {'Hex': 2, 'HexNAc': 2, 'dHex': 2}, {'Hex': 3, 'HexNAc': 2, 'dHex': 1}, {'Hex': 3, 'HexNAc': 3}, {'Hex': 7}, {'Hex': 3, 'HexNAc': 2, 'dHex': 2}, {'Hex': 3, 'HexNAc': 3, 'dHex': 1}, {'Hex': 8}, {'Hex': 3, 'HexNAc': 4}, {'Hex': 3, 'HexNAc': 3, 'dHex': 2}, {'Hex': 3, 'HexNAc': 4, 'dHex': 1}, {'Hex': 9}, {'Hex': 3, 'HexNAc': 4, 'dHex': 2}, {'Hex': 10}, {'Hex': 11}, {'Hex': 12}],
-                     'mass': [147.065186, 163.060096, 204.086646, 274.092136, 290.087016, 292.102696, 308.097576, 309.118006, 325.112916, 350.144556, 366.139466, 407.166016, 454.155516, 470.150396, 487.165736, 495.182066, 511.176946, 512.197376, 528.192286, 553.223926, 569.218836, 649.218556, 657.234886, 673.229766, 674.250196, 690.245106, 699.281836, 715.276746, 731.271656, 803.292796, 811.271376, 819.287676, 819.287706, 835.282586, 836.303016, 861.334656, 877.329566, 893.324476, 965.345616, 973.324196, 981.340496, 1023.387476, 1039.382386, 1096.403846, 1135.377016, 1185.440296, 1242.461756, 1297.429836, 1299.483216, 1388.519666, 1445.541126, 1459.482656, 1591.599036, 1621.535476, 1783.588296, 1945.641116]})
+
+building_blocks = pd.DataFrame(index = pd.Series(['Hex', 'HexNAc', 'dHex', 'NeuAc', 'NeuGc'], name='name'),
+                               data = {'mass':[162.05282, 203.07937, 146.05791, 291.09542, 307.0903],
+                                       'code':['H', 'N', 'F', 'S', 'G'],
+                                       'min_comp':[0, 1, 0, 0, 0],
+                                       'max_comp':[12, 7, 2, 4, 4],
+                                       'type':['Hexose', 'Hexose-NAc', 'Deoxy-hexose', 'Sialic-acid', 'Sialic-acid']})
+
+comp_assembler = GlyCompAssembler(building_blocks)
+
+assembled_oxonium_ions = assemble_ox_ions(oxonium_ions_type_composition_table, comp_assembler)
+assembled_oxonium_ions = assembled_oxonium_ions.sort_values(by='mass', ascending=True) # sort by mass for faster performance in finding these ions
 
 # ion finder
-oxonium_ions_finder = (366.139472, 528.192296, 657.234889, 274.092128, 292.102693,
-                454.155516, 512.19793, 407.166021, 495.182615)
 min_oxonium_intensity = 0.01
 min_oxonium_intensity_type = 'relative'
+assembled_ions_ox_finder = assemble_ox_ions(ions_type_composition_table_ox_finder, comp_assembler)
+assembled_ions_ox_finder = assembled_ions_ox_finder.sort_values(by='mass', ascending=True) # sort by mass for faster performance in finding these ions
+ions_mass_ox_finder = assembled_ions_ox_finder['mass'].to_numpy()
 
 # pattern finder
 min_oxonium_count = 1
 min_relative_oxonium_intensity = 0.0047
-precursor_mz = 1025.1607096436799
-precursor_charge = 4
 pattern = (-220.0821, -203.0794, -120.0423, 0, 203.0794, 365.1322, 527.185, 689.2378)
 min_ref_mass = 850
 min_ref_relative_int = 0.1
+min_patterns_matches = 0
 
 # spectrum modifier
 min_intensity = 0.0
 min_intensity_unit = 'relative'
+ions_mass_spec_modifier = assembled_oxonium_ions['mass']
 
 # composition generator
 building_block_masses  ={'Hex': 162.05282, 'HexNAc': 203.07937, 'dHex': 146.05791, 'NeuAc': 291.09542, 'NeuGc': 307.0903}
@@ -49,34 +61,42 @@ max_composition = {'Hex': 12, 'HexNAc': 7, 'dHex': 2, 'NeuAc': 4, 'NeuGc': 4}
 min_fuc_shdaow_count = 2
 min_ion_int = 0.01
 min_ion_int_unit = 'relative'
+filter_columns = ['has_core', 'sia_smaller_hn'] # composition must have the N-glycan core, Number of Sialic acids is smaller than Hex-HexNAc pairs
+max_isotope_offset = 2 # look for +/- compositions matching +/- this isotope
+assembled_Y5Y1_ions = assemble_Y1_offset_ions(Y5Y1_evidence_compositions, comp_assembler)
+# The mass offset is from Y1, but the composition is from Y0
+assembled_Y5Y1_ions['mass'] = assembled_Y5Y1_ions['mass'] - building_blocks.loc['HexNAc', 'mass']
+assembled_Y5Y1_ions['name'] = 'pep+' + assembled_Y5Y1_ions['name']
+assembled_fucose_ions = assemble_Y1_offset_ions(fucose_evidence_compositions, comp_assembler)
 
 ## instantiate objects
-ion_finder = IonFinder(ions=oxonium_ions_finder, mass_error=mass_error, mass_error_unit=mass_error_unit,
+ion_finder = IonFinder(ions=ions_mass_ox_finder, mass_error=mass_error, mass_error_unit=mass_error_unit,
                        min_int=min_oxonium_intensity, int_type=min_oxonium_intensity_type)
 
-pattern_finder = PatternFinder(pattern, mass_error=mass_error, mass_error_unit=mass_error_unit,
-                                       minimum_reference_mass=min_ref_mass,
-                                       minimum_reference_relative_intensity=min_ref_relative_int)
+pattern_finder = PatternFinder(pattern=pattern, mass_error=mass_error, mass_error_unit=mass_error_unit,
+                               minimum_reference_mass=min_ref_mass,
+                               minimum_reference_relative_intensity=min_ref_relative_int,
+                               min_pattern_matches=min_patterns_matches)
 
-spectrum_modifier = SpectrumModifier(ions=tuple(oxonium_ions['mass']), mass_error=mass_error, isotope_mass_error=mass_error,
+spectrum_modifier = SpectrumModifier(ions=ions_mass_spec_modifier, mass_error=mass_error, isotope_mass_error=mass_error,
                                      mass_error_unit=mass_error_unit,min_int=min_intensity, int_type=min_intensity_unit)
 
-glycan_composition_generator = GlycanCompositionGenerator(building_block_masses=building_block_masses,
-                                                            building_block_codes=building_block_codes,
-                                                            min_composition=min_composition,
-                                                            max_composition=max_composition,
-                                                            glycan_mass_error=mass_error,
-                                                            glycan_mass_error_unit=mass_error_unit,
-                                                            oxonium_mass_error=mass_error,
-                                                            oxonium_mass_error_unit=mass_error_unit)
+glycan_composition_generator = GlycanCompositionGenerator(building_blocks=building_blocks,
+                                                          glycan_mass_error=mass_error,
+                                                          glycan_mass_error_unit=mass_error_unit)
 
-glycan_composition_ranker = GlycanCompRanker(building_block_masses=building_block_masses,
-                                             building_block_codes=building_block_codes,
-                                             ox_ions=oxonium_ions,
+glycan_composition_ranker = GlycanCompRanker(building_blocks=building_blocks,
+                                             ox_ions=assembled_oxonium_ions,
+                                             Y5Y1_evidence_ions=assembled_Y5Y1_ions,
+                                             fucose_evidence_ions=assembled_fucose_ions,
+                                             Y0Y1_ions=Y0Y1_ions,
+                                             extra_Y_ions=extra_Y_ions,
+                                             minimum_fucose_count=min_fuc_shdaow_count,
                                              mass_error=mass_error,
                                              mass_error_unit=mass_error_unit,
                                              minimum_ion_intensity=min_ion_int,
-                                             minimum_intensity_type=min_ion_int_unit)
+                                             minimum_intensity_type=min_ion_int_unit,
+                                             filters_to_apply=filter_columns)
 
 # process spectrum
 found_ions = ion_finder.find_ions(spectrum)
@@ -112,12 +132,20 @@ if (num_oxonium >= min_oxonium_count) and (rel_ox_int_sum >= min_relative_oxoniu
         print(f'modified the spectrum, spectrum length went from {spectrum.shape[0]} to {pep_spectrum.shape[0]}.\n'
               f'Y1_mass: {Y1_mass}, modified_precursor_mz: {modified_precursor_mz}, glycan mass: {experimental_glycan_mr}\n')
 
-        #generate and reank the compositions
-        compositions = glycan_composition_generator.generate_composition(experimental_glycan_mr, 0)
+        # generate and rank the compositions
+        compositions = []
+        isotope_offsets = np.arange(-max_isotope_offset,
+                                    max_isotope_offset + 1)
+        for mass_offset in isotope_offsets:
+            compositions = compositions + glycan_composition_generator.generate_composition(experimental_glycan_mr,
+                                                                            mass_offset)
+
         ranked_compositions, spec_properties = glycan_composition_ranker.rank_compositions(compositions, spectrum,
                                                                                            found_pattern['ref_mz'],
                                                                                            found_pattern['charge'])
         comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions]
+        filtered_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions if c.filtered_glycan_rank]
         rank1_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions if c.filtered_glycan_rank == 1]
         print(f'found {len(ranked_compositions)} compositions: {comp_strings}\n'
+              f'{len(filtered_comp_strings)} filtered compositions: {filtered_comp_strings}\n'
               f'top ranking compositions: {rank1_comp_strings}\n')
