@@ -1,2 +1,3 @@
+from .DataClasses import CompositionProperties, SpectrumProperties
 from .GlycanCompGenerator import GlycanCompositionGenerator
 from .GlycanCompRanker import GlycanCompRanker
