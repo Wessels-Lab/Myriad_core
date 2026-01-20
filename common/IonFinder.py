@@ -4,7 +4,7 @@ Created on Wed Aug  4 2021
 @author: Gad.Armony
 """
 
-from .utils import get_mass_intensity_sorted_single_mass, get_mass_intensity_sorted
+from utils import get_mass_intensity_sorted, get_mass_intensity_sorted_single_mass
 import numpy as np
 from numpy.typing import ArrayLike
 

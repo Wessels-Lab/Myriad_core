@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from Myriad_glycan_id.utils import check_min_comp, comp_to_type_comp
+from utils import check_min_comp, comp_to_type_comp
 
 
 @dataclass

@@ -5,7 +5,7 @@ Created on Wed Aug 18 13:21:34 2021
 @author: Gad.Armony
 """
 
-from IonFinder.utils import get_mass_index, get_mass_intensity_sorted, mass_from_mz
+from utils import get_mass_index, get_mass_intensity_sorted, mass_from_mz
 import numpy as np
 import pandas as pd
 

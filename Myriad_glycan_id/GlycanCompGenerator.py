@@ -1,6 +1,6 @@
 import warnings
 import pandas as pd
-from Myriad_glycan_id.DataClasses import CompositionProperties
+from Myriad_glycan_id import CompositionProperties
 
 
 class GlycanCompositionGenerator(object):

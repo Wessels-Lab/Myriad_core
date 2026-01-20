@@ -6,7 +6,7 @@ Created on Tue Oct  5 15:09:36 2021
 """
 from typing import Sequence
 
-from IonFinder.utils import get_mass_index
+from utils import get_mass_index
 import numpy as np
 import pyopenms as oms
 

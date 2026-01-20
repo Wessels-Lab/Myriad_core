@@ -3,10 +3,10 @@
 import pandas as pd
 import numpy as np
 
-from IonFinder import IonFinder
-from Myriad_glycan_id import GlyCompAssembler
+from common import IonFinder
+from common import GlyCompAssembler
 
-from Myriad_glycan_id.utils import check_min_comp, add_dHex_to_compositions
+from utils import check_min_comp, add_dHex_to_compositions
 from Myriad_glycan_id.DataClasses import SpectrumProperties, CompositionProperties
 
 
