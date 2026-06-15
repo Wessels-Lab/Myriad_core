@@ -227,20 +227,29 @@ def str_to_comp_dict(comp_str) -> dict:
     return {b: int(cnt) for b, cnt in re.findall('([A-z]+)(\\d+)', comp_str)}
 
 
-def comp_dict_to_str(comp_dict: dict[str, int]) -> str:
+def comp_dict_to_str(comp_dict: dict[str, int], explicit_1: bool = True) -> str:
     """
     serializes a composition dictionary to a string, skipping 0 values
     Parameters
     ----------
     comp_dict: dict
         dictionary of this composition. e.g. {'H':5, 'N':4, 'F':0, 'S': 2}
+    explicit_1: bool
+        whether to include the count for values of 1 (e.g. H1N2 vs HN2)
 
     Returns
     -------
     str
         a string of composition with one-letter code. e.g. H5N4S2
     """
-    return  ''.join([f'{k}{v}' for k, v in comp_dict.items() if v > 0])
+    parts = []
+    for bb, cnt in comp_dict.items():
+        if cnt > 0:
+            if explicit_1 or cnt > 1:
+                parts.append(f"{bb}{cnt}")
+            else:
+                parts.append(bb)
+    return "".join(parts)
 
 
 def apply_bb_codes(comp_dict: dict[str, int], bb_codes:dict[str,str]) -> dict:
@@ -326,7 +335,10 @@ def add_dHex_to_compositions(ions_compositions: pd.DataFrame, comp_assembler: "G
     """Add a dHex building block to the ions_compositions for every building block of type dHex"""
     def add_dHex(dHex_name) -> pd.DataFrame:
         compositions = ions_compositions['composition'].apply(lambda x: ({**x, **{dHex_name:1}}))
-        names = compositions.apply(comp_assembler.name_from_composition)
+        names = compositions.apply(lambda x: comp_dict_to_str(
+            apply_bb_codes(x, comp_assembler.building_blocks['code'].to_dict()),
+            explicit_1=True)
+                                   )
         names = 'pep+' + names
         masses = compositions.apply(comp_assembler.calcualte_composition_mass)
         out_df = pd.DataFrame({'name': names, 'composition': compositions, 'mass': masses}).sort_values('mass')
