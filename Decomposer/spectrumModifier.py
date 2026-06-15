@@ -127,7 +127,7 @@ class SpectrumModifier(object):
                                     mono_mass: float):
         """
         Find the index of a monoisotopic mass and it's isotopes.
-        A peak is considered the next isotope if it has +1 m/z (+/-mass_error) and
+        A peak is considered the next isotope if it has +1.003355 m/z (+/-mass_error) and
             its intensity is lower than the previous isotope peak.
 
         Parameters
@@ -169,10 +169,12 @@ class SpectrumModifier(object):
 
         # look for isotope peaks untill the intensity is not decending or
         # the end of the spectrum is reached
-        isotope_offset = 1
-        while ((mono_mass + isotope_offset <= spectrum[spectrum.shape[0]-1, 0]) and
-               (isotope_offset <= self.number_of_isotopes)):
-            isotope_index = get_mass_index(spectrum, found_mass + isotope_offset, self.isotope_mass_error, self.mass_error_unit)
+        isotope_mass = 1.003355  # C13-C12 mass difference
+        isotope_count = 1
+        while ((mono_mass + isotope_count * isotope_mass <= spectrum[spectrum.shape[0] - 1, 0]) and
+               (isotope_count <= self.number_of_isotopes)):
+            isotope_index = get_mass_index(spectrum, found_mass + isotope_count * isotope_mass, self.isotope_mass_error,
+                                           self.mass_error_unit)
             # If an isotope peak was not found, stop looking further
             if np.isnan(isotope_index):
                 break
@@ -181,7 +183,7 @@ class SpectrumModifier(object):
                 break
             else:
                 mass_and_isotopes_index.append(isotope_index)
-            isotope_offset += 1
+            isotope_count += 1
         return mass_and_isotopes_index
 
     def remove_ions(self, spectrum: np.ndarray,
