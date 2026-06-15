@@ -68,7 +68,7 @@ class CompositionProperties(object):
             The isotope offset for the glycan mass. (from the mass calculated by the decomposer)
 
         """
-
+        assert len(glycan_composition) > 0, 'glycan_composition cannot be empty'
         self.glycan_composition = glycan_composition
         self.building_blocks = building_blocks
         self.glycan_isotope_offset = isotope_offset
@@ -83,20 +83,29 @@ class CompositionProperties(object):
         self.non_empty_comp = any([pd.notna(v) for v in self.glycan_composition.values()])
         # filters for common glycans
         if self.non_empty_comp:
-            min_core_mass = (building_blocks.loc[building_blocks['type'] == 'Hexose', 'mass'].min() * 3 +
-                             building_blocks.loc[building_blocks['type'] == 'Hexose-NAc', 'mass'].min() * 2)
-            self.has_core = check_min_comp(self.glycan_bb_type_composition, {'Hexose': 3, 'Hexose-NAc': 2}) | \
-                            (self.corrected_glycan_mr < min_core_mass)
-            HN_pairs = max(
-                min(self.glycan_bb_type_composition['Hexose'] - 3, self.glycan_bb_type_composition['Hexose-NAc'] - 2),
-                0)
-            if self.glycan_bb_type_composition['Sialic-acid'] > 0:
-                if HN_pairs >= self.glycan_bb_type_composition['Sialic-acid']:
-                    self.sia_smaller_hn = True
-                else:
-                    self.sia_smaller_hn = False
+            bb_types = set(building_blocks['type'].dropna())
+            # Make sure there are both Hexose and Hexose-NAc building blocks
+            if {'Hexose-NAc', 'Hexose'}.issubset(bb_types):
+                min_core_mass = (building_blocks.loc[building_blocks['type'] == 'Hexose', 'mass'].min() * 3 +
+                                 building_blocks.loc[building_blocks['type'] == 'Hexose-NAc', 'mass'].min() * 2)
+                self.has_core = check_min_comp(self.glycan_bb_type_composition, {'Hexose': 3, 'Hexose-NAc': 2}) | \
+                                (self.corrected_glycan_mr < min_core_mass)
             else:
-                self.sia_smaller_hn = True
+                self.has_core = None
+            # Make sure there are Hexose, Hexose-NAc, and Sialic-acid building blocks
+            if {'Hexose-NAc', 'Hexose', 'Sialic-acid'}.issubset(bb_types):
+                HN_pairs = max(min(self.glycan_bb_type_composition['Hexose'] - 3,
+                                   self.glycan_bb_type_composition['Hexose-NAc'] - 2),
+                               0)
+                if self.glycan_bb_type_composition['Sialic-acid'] > 0:
+                    if HN_pairs >= self.glycan_bb_type_composition['Sialic-acid']:
+                        self.sia_smaller_hn = True
+                    else:
+                        self.sia_smaller_hn = False
+                else:
+                    self.sia_smaller_hn = True
+            else:
+                self.sia_smaller_hn = None
         else:
             self.has_core = None
             self.sia_smaller_hn = None
@@ -164,7 +173,6 @@ class CompositionProperties(object):
         self.glycan_rank: int = None
         self.filtered_glycan_rank: int = None
 
-    # TODO: split into multiple functions, now that it is here, it doesn't make sense to bundle
     def calculate_comp_properties(self, ox_ions: pd.DataFrame, ox_ion_int: np.ndarray):
         """
         calculate the composition properties.

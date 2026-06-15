@@ -5,7 +5,11 @@ Created on Wed Aug  4 2021
 """
 
 import itertools
+from warnings import warn
+
 import pandas as pd
+
+from utils import comp_dict_to_str, apply_bb_codes
 
 class GlyCompAssembler(object):
     """
@@ -58,8 +62,11 @@ class GlyCompAssembler(object):
             type_composition = type_composition.copy()
             water_loss = type_composition.pop('-H2O')
         # assert that all building block types in the composition are in the input building blocks.
-        missing_bb_type = [bb_t for bb_t in type_composition if (bb_t != self.building_blocks['type']).all()]
-        assert len(missing_bb_type) == 0, f'missing sugar building block type {missing_bb_type} for oxonium ion {type_composition}'
+        missing_bb_type = sorted(set(type_composition.keys()) - set(self.building_blocks['type']))
+        if len(missing_bb_type) > 0:
+            warn(f'missing sugar building block type {missing_bb_type} for composition {type_composition}, skipping',
+                 stacklevel=2)
+            return out_compositions
 
         # calculate what combinations of building block names we need for each building block type
         bb_type_combinations = {bb_type:[] for bb_type in type_composition}
@@ -71,7 +78,9 @@ class GlyCompAssembler(object):
         # generate name and calcualte mass for all compositions
         for assembled_comp in assembled_compositions:
             out_composition = {}
-            comp_name = self.name_from_composition(assembled_comp)
+            comp_name = comp_dict_to_str(
+                apply_bb_codes(assembled_comp, self.building_blocks['code'].to_dict()),
+                explicit_1=True)
             if water_loss > 0:
                 if water_loss == 1:
                     comp_name += '-H2O'
@@ -140,18 +149,3 @@ class GlyCompAssembler(object):
     def calcualte_composition_mass(self, composition: dict[str,int]) -> float:
         """Calcualte the composition mass based on the building blocks mass"""
         return sum([self.building_blocks.loc[bb, 'mass'] * composition[bb] for bb in composition])
-
-
-    def name_from_composition(self, composition: dict[str,int]) -> str:
-        """generate a short name for a composition based on the composition. Skip count=0 and do add the count for count=1"""
-        name_list = []
-        for bb_name, bb_count in composition.items():
-            code = self.building_blocks.loc[bb_name, 'code']
-            bb_cnt = bb_count
-            if bb_cnt == 0:
-                continue
-            elif bb_cnt == 1:
-                bb_cnt = ''
-            name_list.append(f'{code}{bb_cnt}')
-
-        return ''.join(name_list)
