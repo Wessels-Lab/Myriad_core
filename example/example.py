@@ -64,10 +64,11 @@ min_ion_int_unit = 'relative'
 filter_columns = ['has_core', 'sia_smaller_hn'] # composition must have the N-glycan core, Number of Sialic acids is smaller than Hex-HexNAc pairs
 max_isotope_offset = 2 # look for +/- compositions matching +/- this isotope
 assembled_Y5Y1_ions = assemble_Y1_offset_ions(Y5Y1_evidence_compositions, comp_assembler)
+assembled_fucose_ions = assemble_Y1_offset_ions(fucose_evidence_compositions, comp_assembler)
 # The mass offset is from Y1, but the composition is from Y0
 assembled_Y5Y1_ions['mass'] = assembled_Y5Y1_ions['mass'] - building_blocks.loc['HexNAc', 'mass']
 assembled_Y5Y1_ions['name'] = 'pep+' + assembled_Y5Y1_ions['name']
-assembled_fucose_ions = assemble_Y1_offset_ions(fucose_evidence_compositions, comp_assembler)
+assembled_fucose_ions['mass'] = assembled_fucose_ions['mass'] - building_blocks.loc['HexNAc', 'mass']
 
 ## instantiate objects
 ion_finder = IonFinder(ions=ions_mass_ox_finder, mass_error=mass_error, mass_error_unit=mass_error_unit,

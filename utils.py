@@ -341,6 +341,8 @@ def add_dHex_to_compositions(ions_compositions: pd.DataFrame, comp_assembler: "G
                                    )
         names = 'pep+' + names
         masses = compositions.apply(comp_assembler.calcualte_composition_mass)
+        # The mass offset is from Y1, but the composition is from Y0
+        masses = masses - comp_assembler.building_blocks.loc['HexNAc', 'mass']
         out_df = pd.DataFrame({'name': names, 'composition': compositions, 'mass': masses}).sort_values('mass')
         return out_df
 
