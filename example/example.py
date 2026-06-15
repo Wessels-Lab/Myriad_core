@@ -52,10 +52,7 @@ min_intensity_unit = 'relative'
 ions_mass_spec_modifier = assembled_oxonium_ions['mass']
 
 # composition generator
-building_block_masses  ={'Hex': 162.05282, 'HexNAc': 203.07937, 'dHex': 146.05791, 'NeuAc': 291.09542, 'NeuGc': 307.0903}
-building_block_codes ={ 'Hex': 'H', 'HexNAc': 'N', 'dHex': 'F', 'NeuAc': 'S', 'NeuGc': 'G'}
-min_composition = {'Hex': 0, 'HexNAc': 1, 'dHex': 0, 'NeuAc': 0, 'NeuGc': 0}
-max_composition = {'Hex': 12, 'HexNAc': 7, 'dHex': 2, 'NeuAc': 4, 'NeuGc': 4}
+
 
 # composition ranker
 min_fuc_shdaow_count = 2
@@ -129,7 +126,7 @@ if (num_oxonium >= min_oxonium_count) and (rel_ox_int_sum >= min_relative_oxoniu
         # calculate the glycan mass
         experimental_glycan_mr = (mass_from_mz(precursor_mz, precursor_charge) -  # precursor mass
                     Y1_mass +  # pep+HexNAc mass
-                    building_block_masses['HexNAc'])
+                    building_blocks.loc['HexNAc', 'mass'])
         print(f'modified the spectrum, spectrum length went from {spectrum.shape[0]} to {pep_spectrum.shape[0]}.\n'
               f'Y1_mass: {Y1_mass}, modified_precursor_mz: {modified_precursor_mz}, glycan mass: {experimental_glycan_mr}\n')
 
@@ -144,9 +141,9 @@ if (num_oxonium >= min_oxonium_count) and (rel_ox_int_sum >= min_relative_oxoniu
         ranked_compositions, spec_properties = glycan_composition_ranker.rank_compositions(compositions, spectrum,
                                                                                            found_pattern['ref_mz'],
                                                                                            found_pattern['charge'])
-        comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions]
-        filtered_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions if c.filtered_glycan_rank]
-        rank1_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_block_codes)) for c in ranked_compositions if c.filtered_glycan_rank == 1]
+        comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_blocks['code'].to_dict())) for c in ranked_compositions]
+        filtered_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_blocks['code'].to_dict())) for c in ranked_compositions if c.filtered_glycan_rank]
+        rank1_comp_strings = [comp_dict_to_str(apply_bb_codes(c.glycan_composition, building_blocks['code'].to_dict())) for c in ranked_compositions if c.filtered_glycan_rank == 1]
         print(f'found {len(ranked_compositions)} compositions: {comp_strings}\n'
               f'{len(filtered_comp_strings)} filtered compositions: {filtered_comp_strings}\n'
               f'top ranking compositions: {rank1_comp_strings}\n')
